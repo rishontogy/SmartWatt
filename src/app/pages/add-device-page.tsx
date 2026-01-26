@@ -18,8 +18,10 @@ import {
   Home,
   ArrowLeft,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { devicesAPI, zonesAPI } from "@/app/lib/api";
+import { toast } from "sonner";
 
 interface Device {
   id: string;
@@ -44,10 +46,28 @@ const zones = ["Living Room", "Kitchen", "Bedroom", "Bathroom", "Dining Room", "
 
 export function AddDevicePage() {
   const navigate = useNavigate();
-  const [devices, setDevices] = useState<Device[]>(() => {
-    const saved = localStorage.getItem('userDevices');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [zones, setZones] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [devicesData, zonesData] = await Promise.all([
+          devicesAPI.getDevices(),
+          zonesAPI.getZones()
+        ]);
+        setDevices(devicesData);
+        setZones(zonesData.map((z: any) => z.name));
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+        toast.error("Failed to load data");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const [newDevice, setNewDevice] = useState({
     name: '',
@@ -61,38 +81,48 @@ export function AddDevicePage() {
     return deviceType?.icon || Zap;
   };
 
-  const addDevice = () => {
+  const addDevice = async () => {
     if (!newDevice.name || !newDevice.zone || !newDevice.type || !newDevice.consumption) {
-      alert('Please fill all fields');
+      toast.error('Please fill all fields');
       return;
     }
 
-    const device: Device = {
-      id: Date.now().toString(),
-      name: newDevice.name,
-      zone: newDevice.zone,
-      type: newDevice.type,
-      consumption: parseInt(newDevice.consumption),
-      icon: newDevice.type,
-    };
+    try {
+      const deviceData = {
+        id: Date.now().toString(),
+        zone: newDevice.zone,
+        status: 'offline',
+        name: newDevice.name,
+        type: newDevice.type,
+        consumption: parseInt(newDevice.consumption),
+      };
 
-    const updatedDevices = [...devices, device];
-    setDevices(updatedDevices);
-    localStorage.setItem('userDevices', JSON.stringify(updatedDevices));
+      await devicesAPI.saveDevice(deviceData);
+      setDevices([...devices, deviceData]);
+      toast.success('Device added successfully');
 
-    // Reset form
-    setNewDevice({
-      name: '',
-      zone: '',
-      type: '',
-      consumption: '',
-    });
+      // Reset form
+      setNewDevice({
+        name: '',
+        zone: '',
+        type: '',
+        consumption: '',
+      });
+    } catch (error) {
+      console.error("Failed to add device:", error);
+      toast.error("Failed to add device");
+    }
   };
 
-  const removeDevice = (id: string) => {
-    const updatedDevices = devices.filter(d => d.id !== id);
-    setDevices(updatedDevices);
-    localStorage.setItem('userDevices', JSON.stringify(updatedDevices));
+  const removeDevice = async (id: string) => {
+    try {
+      await devicesAPI.deleteDevice(id);
+      setDevices(devices.filter(d => d.id !== id));
+      toast.success('Device removed successfully');
+    } catch (error) {
+      console.error("Failed to remove device:", error);
+      toast.error("Failed to remove device");
+    }
   };
 
   const getDeviceTypeLabel = (type: string) => {
@@ -110,6 +140,10 @@ export function AddDevicePage() {
       default: return "bg-gray-100 text-gray-800";
     }
   };
+
+  if (loading) {
+    return <div className="space-y-6">Loading...</div>;
+  }
 
   return (
     <div className="space-y-6">

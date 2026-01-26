@@ -2,10 +2,22 @@ import { Outlet, Link, useLocation } from "react-router";
 import { Zap, Home, User, BarChart3, Bolt, FileText, Menu, X, Settings, MapPin } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { useState } from "react";
+import { useAuth } from "@/app/contexts/auth-context";
+import { toast } from "sonner";
 
 export function DashboardLayout() {
   const location = useLocation();
+  const { signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast.success("Logged out successfully");
+    } catch (error) {
+      toast.error("Failed to logout");
+    }
+  };
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: Home },
@@ -71,11 +83,9 @@ export function DashboardLayout() {
         </nav>
 
         <div className="absolute bottom-4 left-4 right-4">
-          <Link to="/">
-            <Button variant="outline" className="w-full">
-              Logout
-            </Button>
-          </Link>
+          <Button variant="outline" className="w-full" onClick={handleLogout}>
+            Logout
+          </Button>
         </div>
       </aside>
 

@@ -6,11 +6,12 @@ import { Label } from "@/app/components/ui/label";
 import { Card } from "@/app/components/ui/card";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Zap, Eye, EyeOff } from "lucide-react";
-import { authAPI } from "@/app/lib/api";
+import { useAuth } from "@/app/contexts/auth-context";
 import { toast } from "sonner";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -33,9 +34,9 @@ export function LoginPage() {
     if (Object.keys(newErrors).length === 0) {
       setLoading(true);
       try {
-        await authAPI.login(formData.email, formData.password);
+        await signIn(formData.email, formData.password);
         toast.success("Logged in successfully! Redirecting...");
-        setTimeout(() => navigate("/dashboard"), 1000);
+        navigate("/dashboard");
       } catch (error: any) {
         console.error("Login error:", error);
         toast.error(error.message || "Invalid credentials");

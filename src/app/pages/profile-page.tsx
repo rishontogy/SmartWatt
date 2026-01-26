@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Card } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -21,9 +22,88 @@ import {
   FileText,
 } from "lucide-react";
 import { useTheme } from "@/app/contexts/theme-context";
+import { useAuth } from "@/app/contexts/auth-context";
+import { profileAPI } from "@/app/lib/api";
+import { toast } from "sonner";
 
 export function ProfilePage() {
   const { theme, toggleTheme } = useTheme();
+  const { user, signOut } = useAuth();
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    email: ''
+  });
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        let data = await profileAPI.getProfile();
+
+        // If profile doesn't exist, create it
+        if (!data && user) {
+          data = await profileAPI.createOrUpdateProfile({
+            id: user.id,
+            full_name: user.user_metadata?.full_name || '',
+            email: user.email,
+            is_verified: user.email_confirmed_at ? true : false
+          });
+        }
+
+        setProfile(data);
+        setEditForm({
+          full_name: data?.full_name || '',
+          email: data?.email || user?.email || ''
+        });
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
+        toast.error("Failed to load profile");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+      fetchProfile();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success("Signed out successfully");
+    } catch (error) {
+      toast.error("Failed to sign out");
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      await profileAPI.updateProfile({
+        full_name: editForm.full_name,
+        email: editForm.email
+      });
+      setProfile({ ...profile, ...editForm });
+      setIsEditing(false);
+      toast.success("Profile updated successfully");
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+      toast.error("Failed to update profile");
+    }
+  };
+
+  if (loading) {
+    return <div className="max-w-6xl mx-auto space-y-6">Loading...</div>;
+  }
+
+  if (!user) {
+    return <div className="max-w-6xl mx-auto space-y-6">Please log in to view your profile.</div>;
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold text-foreground">Profile Settings</h1>
@@ -32,75 +112,103 @@ export function ProfilePage() {
       <Card className="p-6">
         <div className="flex items-start justify-between mb-6">
           <h2 className="text-xl font-semibold">User Information</h2>
-          <Button variant="outline" size="sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsEditing(!isEditing)}
+          >
             <Edit className="w-4 h-4 mr-2" />
-            Edit Profile
+            {isEditing ? 'Cancel' : 'Edit Profile'}
           </Button>
         </div>
 
         <div className="flex items-center gap-6 mb-6">
           <Avatar className="w-24 h-24">
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>JD</AvatarFallback>
+            <AvatarImage src={profile?.avatar_url} />
+            <AvatarFallback>{profile?.full_name?.charAt(0) || user.email?.charAt(0)}</AvatarFallback>
           </Avatar>
           <div className="space-y-2">
-            <h3 className="text-2xl font-bold">John Doe</h3>
-            <Badge>Admin</Badge>
+            <h3 className="text-2xl font-bold">{profile?.full_name || user.email}</h3>
+            <Badge>{profile?.is_verified ? 'Verified' : 'Unverified'}</Badge>
+            <p className="text-sm text-muted-foreground">User ID: {user.id}</p>
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="fullName">Full Name</Label>
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4 text-muted-foreground" />
-              <Input id="fullName" value="John Doe" readOnly />
-            </div>
+            {isEditing ? (
+              <Input
+                id="fullName"
+                value={editForm.full_name}
+                onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <span>{profile?.full_name || 'Not set'}</span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
+            {isEditing ? (
+              <Input
+                id="email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-muted-foreground" />
+                <span>{profile?.email || user.email}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>User ID</Label>
             <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4 text-muted-foreground" />
-              <Input id="email" value="john.doe@smartwatt.io" readOnly />
+              <Shield className="w-4 h-4 text-muted-foreground" />
+              <span className="font-mono text-sm">{user.id}</span>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-muted-foreground" />
-              <Input id="phone" value="+1 (555) 123-4567" readOnly />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="joined">Member Since</Label>
+            <Label>Account Created</Label>
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              <Input id="joined" value="January 15, 2024" readOnly />
+              <span>{user.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Last Login</Label>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-muted-foreground" />
+              <span>{profile?.last_login ? new Date(profile.last_login).toLocaleString() : 'Never'}</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Verification Status</Label>
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-muted-foreground" />
+              <Badge variant={profile?.is_verified ? 'default' : 'secondary'}>
+                {profile?.is_verified ? 'Verified' : 'Unverified'}
+              </Badge>
             </div>
           </div>
         </div>
 
-        <Separator className="my-6" />
-
-        <div className="space-y-4">
-          <h3 className="font-semibold">Account Details</h3>
-          <div className="grid md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Username</p>
-              <p className="font-semibold">john_doe</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Last Login</p>
-              <p className="font-semibold">Today at 10:30 AM</p>
-            </div>
+        {isEditing && (
+          <div className="flex gap-2 mt-6">
+            <Button onClick={handleSaveProfile}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
           </div>
-          <Button variant="outline" size="sm">
-            Change Password
-          </Button>
-        </div>
+        )}
       </Card>
 
       {/* Connected Devices */}
@@ -291,7 +399,7 @@ export function ProfilePage() {
 
       {/* Logout */}
       <Card className="p-6">
-        <Button variant="destructive" className="w-full md:w-auto">
+        <Button variant="destructive" className="w-full md:w-auto" onClick={handleSignOut}>
           <LogOut className="w-4 h-4 mr-2" />
           Logout
         </Button>

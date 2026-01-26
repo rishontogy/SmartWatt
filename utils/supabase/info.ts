@@ -1,0 +1,3 @@
+// Supabase configuration
+export const projectId = 'owavcctffhvofbyonuvo';
+export const publicAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93YXZjY3RmZmh2b2ZieW9udXZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzOTYxMTksImV4cCI6MjA4NDk3MjExOX0.2nd4aQfkUDonzHhEPxwDqQd69nkE39_voXZkb5uUVso'; // Replace with your actual anon key from Supabase dashboard

@@ -1,33 +1,11 @@
-// import { projectId, publicAnonKey } from 'utils/supabase/info';
-// import { createClient } from '@supabase/supabase-js';
-
-// const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-9e22c472`;
+import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { createClient } from '@supabase/supabase-js';
 
 // Create Supabase client for frontend auth
-// export const supabase = createClient(
-//   `https://${projectId}.supabase.co`,
-//   publicAnonKey
-// );
-
-// Mock supabase client
-export const supabase = {
-  from: (table: string) => ({
-    select: (columns?: string) => ({
-      eq: (column: string, value: any) => ({
-        single: () => Promise.resolve({ data: null, error: null }),
-      }),
-      single: () => Promise.resolve({ data: null, error: null }),
-    }),
-    insert: (data: any) => ({
-      select: () => ({
-        single: () => Promise.resolve({ data: null, error: null }),
-      }),
-    }),
-    update: (data: any) => ({
-      eq: (column: string, value: any) => Promise.resolve({ error: null }),
-    }),
-  }),
-};
+export const supabase = createClient(
+  `https://${projectId}.supabase.co`,
+  publicAnonKey
+);
 
 // Helper function for authenticated API calls (not used in mock)
 async function apiCall(endpoint: string, options: RequestInit = {}) {
@@ -36,229 +14,253 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
   return { success: true };
 }
 
-// Session management
-let currentUser: any = null;
-let currentSession: any = null;
-
-// Password hashing utility (simple for demo - use bcrypt in production)
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'smartwatt_salt_2024');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const hashedInput = await hashPassword(password);
-  return hashedInput === hash;
-}
-
-// Generate session token
-function generateSessionToken(): string {
-  return crypto.randomUUID() + '-' + Date.now();
-}
-
-// Auth API - Custom implementation with users table
-// Auth API - Mock implementation
+// Auth API - Supabase implementation
 export const authAPI = {
   async signUp(email: string, password: string, name: string) {
-    // Mock sign up
-    const mockUser = {
-      id: 'mock-user-id',
+    const { data, error } = await supabase.auth.signUp({
       email,
-      full_name: name,
-      is_verified: true,
-      is_active: true,
-      login_attempts: 0,
-      locked_until: null,
-      last_login: new Date(),
-    };
-    const mockSession = {
-      user: mockUser,
-      session_token: generateSessionToken(),
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    };
-    currentUser = mockUser;
-    currentSession = mockSession;
-    return { user: mockUser, session: mockSession };
+      password,
+      options: {
+        data: { full_name: name }
+      }
+    });
+    if (error) throw error;
+
+    return { user: data.user, session: data.session };
   },
 
   async login(email: string, password: string) {
-    // Mock login - accept any email/password
-    const mockUser = {
-      id: 'mock-user-id',
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      full_name: 'Mock User',
-      is_verified: true,
-      is_active: true,
-      login_attempts: 0,
-      locked_until: null,
-      last_login: new Date(),
-    };
-    const mockSession = {
-      user: mockUser,
-      session_token: generateSessionToken(),
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    };
-    currentUser = mockUser;
-    currentSession = mockSession;
-    return { user: mockUser, session: mockSession };
+      password
+    });
+    if (error) throw error;
+
+    return { user: data.user, session: data.session };
   },
 
   async logout() {
-    currentUser = null;
-    currentSession = null;
-    console.log('Logged out successfully');
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   },
 
   async getSession() {
-    return currentSession;
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    return data.session;
   },
 
   async getUser() {
-    return currentUser;
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return data.user;
   },
 
   isAuthenticated() {
-    return currentUser !== null && currentSession !== null;
+    return !!supabase.auth.getUser();
   },
 
   getCurrentUser() {
-    return currentUser;
+    return supabase.auth.getUser();
   },
 
   getCurrentSession() {
-    return currentSession;
+    return supabase.auth.getSession();
   },
 };
 
 // Profile API
 export const profileAPI = {
   async getProfile() {
-    // Mock profile data
-    return {
-      name: 'John Doe',
-      email: 'john.doe@example.com',
-      devices: 4,
-      totalConsumption: 342,
-    };
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .single();
+
+    if (error) {
+      // If profile doesn't exist, return null and we'll handle it in the UI
+      if (error.code === 'PGRST116') { // No rows returned
+        return null;
+      }
+      throw error;
+    }
+    return data;
+  },
+
+  async createOrUpdateProfile(profileData: Record<string, unknown>) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(profileData)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 
   async updateProfile(updates: Record<string, unknown>) {
-    // Mock update
-    console.log('Mock update profile:', updates);
-    return { success: true };
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates);
+    if (error) throw error;
   },
 };
 
 // Energy API
 export const energyAPI = {
   async getCurrentReading() {
-    // Mock current reading
+    // For current reading, perhaps get latest from readings
+    const { data, error } = await supabase
+      .from('energy_readings')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+    if (error) throw error;
     return {
-      current: 2.45,
-      voltage: 230,
-      power: 563,
-      energy: 12.4,
+      current: data.current,
+      voltage: data.voltage,
+      power: data.power,
+      energy: data.energy,
     };
   },
 
   async getHistory(period: 'day' | 'week' | 'month' = 'day') {
-    // Mock history data
-    return [
-      { time: '00:00', power: 120 },
-      { time: '06:00', power: 450 },
-      { time: '12:00', power: 680 },
-      { time: '18:00', power: 720 },
-      { time: '23:59', power: 320 },
-    ];
+    // Mock for now, but can query based on period
+    const { data, error } = await supabase
+      .from('energy_readings')
+      .select('timestamp, power')
+      .order('timestamp', { ascending: false })
+      .limit(5);
+    if (error) throw error;
+    return data.map((d: any) => ({
+      time: new Date(d.timestamp).toLocaleTimeString(),
+      power: d.power
+    }));
   },
 
   async submitReading(reading: Record<string, unknown>) {
-    // Mock submit
-    console.log('Mock submit reading:', reading);
-    return { success: true };
+    const { error } = await supabase
+      .from('energy_readings')
+      .insert(reading);
+    if (error) throw error;
   },
 };
 
 // Devices API
 export const devicesAPI = {
   async getDevices() {
-    // Mock devices
-    return [
-      { id: 'ESP32-001', zone: 'Living Room', status: 'online' },
-      { id: 'ESP32-002', zone: 'Kitchen', status: 'online' },
-      { id: 'ESP32-003', zone: 'Bedroom', status: 'online' },
-      { id: 'ESP32-004', zone: 'Main Board', status: 'online' },
-    ];
+    const { data, error } = await supabase
+      .from('devices')
+      .select('*');
+    if (error) throw error;
+    return data;
   },
 
   async saveDevice(device: Record<string, unknown>) {
-    // Mock save
-    console.log('Mock save device:', device);
-    return { success: true };
+    const { data, error } = await supabase
+      .from('devices')
+      .insert(device)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   },
 
   async deleteDevice(id: string) {
-    // Mock delete
-    console.log('Mock delete device:', id);
-    return { success: true };
+    const { error } = await supabase
+      .from('devices')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   },
 };
 
 // Zones API
 export const zonesAPI = {
   async getZones() {
-    // Mock zones
-    return [
-      { name: 'Living Room', consumption: 4.5 },
-      { name: 'Kitchen', consumption: 3.2 },
-      { name: 'Bedroom', consumption: 2.1 },
-      { name: 'Bathroom', consumption: 1.5 },
-    ];
+    const { data, error } = await supabase
+      .from('zones')
+      .select('*');
+    if (error) throw error;
+    return data;
   },
 
   async updateZones(zones: unknown[]) {
-    // Mock update
-    console.log('Mock update zones:', zones);
-    return { success: true };
+    // Assuming zones is array of updates
+    for (const zone of zones) {
+      const { error } = await supabase
+        .from('zones')
+        .upsert(zone as any);
+      if (error) throw error;
+    }
   },
 };
 
 // Billing API
 export const billingAPI = {
   async getBilling() {
-    // Mock billing data
+    // Get current month billing
+    const now = new Date();
+    const { data, error } = await supabase
+      .from('billing')
+      .select('*')
+      .eq('month', now.getMonth() + 1)
+      .eq('year', now.getFullYear())
+      .single();
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 is no rows
+    if (data) {
+      return {
+        currentMonth: data.amount,
+        lastMonth: 0, // TODO: calculate
+        savings: data.savings,
+        tariff: data.tariff,
+      };
+    }
     return {
-      currentMonth: 2736,
-      lastMonth: 3600,
-      savings: 840,
+      currentMonth: 0,
+      lastMonth: 0,
+      savings: 0,
       tariff: 8,
     };
   },
 
   async updateBilling(billingData: Record<string, unknown>) {
-    // Mock update
-    console.log('Mock update billing:', billingData);
-    return { success: true };
+    const { error } = await supabase
+      .from('billing')
+      .insert(billingData);
+    if (error) throw error;
   },
 };
 
 // Analytics API
 export const analyticsAPI = {
   async getConsumptionAnalytics(period: 'week' | 'month' = 'week') {
-    // Mock analytics
+    // Aggregate from readings and zones
+    const { data: readings, error: readingsError } = await supabase
+      .from('energy_readings')
+      .select('power, zone');
+    if (readingsError) throw readingsError;
+
+    const { data: zones, error: zonesError } = await supabase
+      .from('zones')
+      .select('name, consumption');
+    if (zonesError) throw zonesError;
+
+    const total = readings.reduce((sum, r) => sum + r.power, 0);
+    const average = total / readings.length || 0;
+    const peak = Math.max(...readings.map(r => r.power), 0);
+
+    const zoneConsumption = zones.map(z => ({
+      name: z.name,
+      percentage: (z.consumption / total) * 100 || 0
+    }));
+
     return {
-      total: 2100,
-      average: 300,
-      peak: 720,
-      zones: [
-        { name: 'Living Room', percentage: 36 },
-        { name: 'Kitchen', percentage: 26 },
-        { name: 'Bedroom', percentage: 17 },
-        { name: 'Other', percentage: 21 },
-      ],
+      total,
+      average,
+      peak,
+      zones: zoneConsumption,
     };
   },
 };

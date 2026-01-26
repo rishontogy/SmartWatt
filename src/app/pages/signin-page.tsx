@@ -6,11 +6,12 @@ import { Label } from "@/app/components/ui/label";
 import { Card } from "@/app/components/ui/card";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Zap, Eye, EyeOff } from "lucide-react";
-import { authAPI } from "@/app/lib/api";
+import { useAuth } from "@/app/contexts/auth-context";
 import { toast } from "sonner";
 
 export function SignInPage() {
   const navigate = useNavigate();
+  const { signUp } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -37,9 +38,9 @@ export function SignInPage() {
     if (Object.keys(newErrors).length === 0) {
       setLoading(true);
       try {
-        await authAPI.signUp(formData.email, formData.password, formData.name);
-        toast.success("Account created successfully! Redirecting...");
-        setTimeout(() => navigate("/dashboard"), 1000);
+        await signUp(formData.email, formData.password, formData.name);
+        toast.success("Account created successfully! Please check your email to verify your account.");
+        navigate("/login");
       } catch (error: any) {
         console.error("Sign up error:", error);
         toast.error(error.message || "Failed to create account");
