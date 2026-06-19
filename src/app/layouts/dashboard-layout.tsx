@@ -1,21 +1,110 @@
 import { Outlet, Link, useLocation } from "react-router";
-import { Zap, Home, User, BarChart3, Bolt, FileText, Menu, X, Settings, MapPin } from "lucide-react";
+import { Zap, Home, User, BarChart3, Bolt, FileText, Menu, X, Settings, MapPin, Sun, Moon, Power } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/app/contexts/auth-context";
+import { useTheme } from "../contexts/theme-context";
 import { toast } from "sonner";
+
+const SERVER_PORT = 3001;
+
+function getServerBase() {
+  return `http://${window.location.hostname}:${SERVER_PORT}`;
+}
 
 export function DashboardLayout() {
   const location = useLocation();
   const { signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // killState synced from WS broadcast — single source of truth
+  const [powerActive, setPowerActive] = useState(true);
+  const [powerLoading, setPowerLoading] = useState(false);
+  const powerLoadingRef = useRef(false);
+
+  // Sync with WS so sidebar button reflects same state as homepage
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.hostname}:${SERVER_PORT}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "kill_switch") {
+          setPowerActive(data.state !== "OFF");
+          powerLoadingRef.current = false;
+          setPowerLoading(false);
+        }
+      } catch { }
+    };
+
+    // Fetch current state on mount
+    const token = localStorage.getItem("token");
+    fetch(`${getServerBase()}/api/devices`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(async (devices) => {
+        if (Array.isArray(devices) && devices.length > 0) {
+          const firstId = devices[0].id;
+          const stateRes = await fetch(
+            `${getServerBase()}/api/control/state?id=${firstId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          ).then(r => r.json()).catch(() => ({ state: "ON" }));
+          setPowerActive(stateRes.state !== "OFF");
+        }
+      })
+      .catch(() => { });
+
+    return () => ws.close();
+  }, []);
 
   const handleLogout = async () => {
     try {
       await signOut();
       toast.success("Logged out successfully");
-    } catch (error) {
+    } catch {
       toast.error("Failed to logout");
+    }
+  };
+
+  const handlePowerToggle = async () => {
+    if (powerLoadingRef.current) return;
+
+    const newState = !powerActive;
+    // Optimistic update
+    setPowerActive(newState);
+    powerLoadingRef.current = true;
+    setPowerLoading(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      const endpoint = newState ? "/api/control/on" : "/api/control/kill";
+      const res = await fetch(`${getServerBase()}${endpoint}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+
+      if (!data.ok) {
+        setPowerActive(!newState); // revert
+        toast.error("Failed to toggle power");
+      } else {
+        toast[newState ? "success" : "error"](
+          newState ? "⚡ Power Restored! Devices online." : "💀 Kill Switch! All devices off."
+        );
+      }
+    } catch {
+      setPowerActive(!newState); // revert
+      toast.error("Failed to toggle power");
+    } finally {
+      powerLoadingRef.current = false;
+      setPowerLoading(false);
     }
   };
 
@@ -46,9 +135,8 @@ export function DashboardLayout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-card border-r border-border transform transition-transform duration-200 lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } pt-16 lg:pt-0`}
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-card border-r border-border transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } pt-16 lg:pt-0`}
       >
         <div className="p-6 border-b border-border hidden lg:flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-green-500 flex items-center justify-center">
@@ -69,11 +157,10 @@ export function DashboardLayout() {
                 key={item.name}
                 to={item.href}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
                     ? "bg-gradient-to-r from-blue-500 to-green-500 text-white"
                     : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                }`}
+                  }`}
               >
                 <Icon className="w-5 h-5" />
                 <span className="font-medium">{item.name}</span>
@@ -82,7 +169,32 @@ export function DashboardLayout() {
           })}
         </nav>
 
-        <div className="absolute bottom-4 left-4 right-4">
+        <div className="absolute bottom-4 left-4 right-4 space-y-2">
+          {/* Kill Switch Button — synced with homepage */}
+          <Button
+            variant={powerActive ? "destructive" : "default"}
+            className={`w-full font-bold ${powerActive
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : "bg-green-600 hover:bg-green-700 text-white"
+              }`}
+            onClick={handlePowerToggle}
+            disabled={powerLoading}
+          >
+            <Power className="w-4 h-4 mr-2" />
+            {powerLoading
+              ? "Updating..."
+              : powerActive
+                ? "Kill Power (OFF)"
+                : "Main Power (ON)"}
+          </Button>
+
+          <Button variant="outline" className="w-full" onClick={toggleTheme}>
+            {theme === "light"
+              ? <Moon className="w-4 h-4 mr-2" />
+              : <Sun className="w-4 h-4 mr-2" />}
+            {theme === "light" ? "Dark Mode" : "Light Mode"}
+          </Button>
+
           <Button variant="outline" className="w-full" onClick={handleLogout}>
             Logout
           </Button>

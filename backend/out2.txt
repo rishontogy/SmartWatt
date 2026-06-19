@@ -1,0 +1,16 @@
+Error
+    at PromisePool.query (D:\SmartWatt\backend\node_modules\mysql2\lib\promise\pool.js:36:22)
+    at fix (D:\SmartWatt\backend\insert_cam2.js:8:32)
+    at Object.<anonymous> (D:\SmartWatt\backend\insert_cam2.js:22:1)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+    at Module.load (node:internal/modules/cjs/loader:1266:32)
+    at Module._load (node:internal/modules/cjs/loader:1091:12)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+    at node:internal/main/run_main_module:28:49 {
+  code: 'ECONNREFUSED',
+  errno: undefined,
+  sql: undefined,
+  sqlState: undefined,
+  sqlMessage: undefined
+}

@@ -39,8 +39,8 @@ export function SignInPage() {
       setLoading(true);
       try {
         await signUp(formData.email, formData.password, formData.name);
-        toast.success("Account created successfully! Please check your email to verify your account.");
-        navigate("/login");
+        toast.success("Account created successfully! Redirecting to dashboard...");
+        navigate("/dashboard");
       } catch (error: any) {
         console.error("Sign up error:", error);
         toast.error(error.message || "Failed to create account");
@@ -133,8 +133,8 @@ export function SignInPage() {
             </label>
           </div>
 
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={loading}
             className="w-full bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600"
           >

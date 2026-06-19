@@ -1,0 +1,17 @@
+[
+  {
+    "id": "ESP32_M",
+    "name": "ESP32_M",
+    "zone": "Living Room"
+  },
+  {
+    "id": "ESP32_MAIN",
+    "name": "Master Kill Switch",
+    "zone": null
+  },
+  {
+    "id": "LR_ROOM_ANALYZER",
+    "name": "Living Room Analyzer",
+    "zone": "Living Room"
+  }
+]

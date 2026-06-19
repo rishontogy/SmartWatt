@@ -17,10 +17,17 @@ CREATE TABLE devices (
   id TEXT PRIMARY KEY,
   zone TEXT,
   status TEXT DEFAULT 'offline',
+  type TEXT DEFAULT 'slave' CHECK (type IN ('master', 'slave')),
+  relay_count INTEGER DEFAULT 0,
+  current_sensor BOOLEAN DEFAULT FALSE,
   user_id UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add constraint for only one master per user
+ALTER TABLE devices ADD CONSTRAINT unique_master_per_user 
+  EXCLUDE (user_id WITH =) WHERE (type = 'master');
 
 -- Create zones table
 CREATE TABLE zones (
@@ -36,11 +43,15 @@ CREATE TABLE zones (
 CREATE TABLE energy_readings (
   id SERIAL PRIMARY KEY,
   device_id TEXT REFERENCES devices(id),
+  zone_id INTEGER REFERENCES zones(id),
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   current FLOAT,
   voltage FLOAT,
   power FLOAT,
   energy FLOAT,
+  is_total BOOLEAN DEFAULT FALSE,
+  sensor_type TEXT DEFAULT 'pzem004t',
+  accuracy FLOAT DEFAULT 0.98,
   user_id UUID REFERENCES auth.users(id)
 );
 
@@ -55,7 +66,18 @@ CREATE TABLE billing (
   savings FLOAT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
+-- Create time_based_tariffs table
+CREATE TABLE time_based_tariffs (
+  id SERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id),
+  slot_name TEXT NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  rate_per_unit FLOAT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 -- Enable RLS on tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE devices ENABLE ROW LEVEL SECURITY;

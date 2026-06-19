@@ -14,63 +14,68 @@ import { SignInPage } from "@/app/pages/signin-page";
 import { LoginPage } from "@/app/pages/login-page";
 import { ProtectedRoute } from "@/app/components/ProtectedRoute";
 
-export const router = createBrowserRouter([
+export const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      Component: WelcomePage,
+    },
+    {
+      path: "/signin",
+      Component: SignInPage,
+    },
+    {
+      path: "/login",
+      Component: LoginPage,
+    },
+    {
+      path: "/dashboard",
+      element: (
+        <ProtectedRoute>
+          <DashboardLayout />
+        </ProtectedRoute>
+      ),
+      children: [
+        {
+          index: true,
+          Component: HomePage,
+        },
+        {
+          path: "profile",
+          Component: ProfilePage,
+        },
+        {
+          path: "graphs",
+          Component: GraphsPage,
+        },
+        {
+          path: "consumption",
+          Component: ConsumptionPage,
+        },
+        {
+          path: "bill",
+          Component: BillPage,
+        },
+        {
+          path: "devices",
+          Component: DeviceControlPage,
+        },
+        {
+          path: "add-device",
+          Component: AddDevicePage,
+        },
+        {
+          path: "zones",
+          Component: ZonesPage,
+        },
+        {
+          path: "zones/:zoneName",
+          Component: ZoneDetailsPage,
+        },
+      ],
+    },
+  ],
   {
-    path: "/",
-    Component: WelcomePage,
-  },
-  {
-    path: "/signin",
-    Component: SignInPage,
-  },
-  {
-    path: "/login",
-    Component: LoginPage,
-  },
-  {
-    path: "/dashboard",
-    element: (
-      <ProtectedRoute>
-        <DashboardLayout />
-      </ProtectedRoute>
-    ),
-    children: [
-      {
-        index: true,
-        Component: HomePage,
-      },
-      {
-        path: "profile",
-        Component: ProfilePage,
-      },
-      {
-        path: "graphs",
-        Component: GraphsPage,
-      },
-      {
-        path: "consumption",
-        Component: ConsumptionPage,
-      },
-      {
-        path: "bill",
-        Component: BillPage,
-      },
-      {
-        path: "devices",
-        Component: DeviceControlPage,
-      },
-      {
-        path: "add-device",
-        Component: AddDevicePage,
-      },
-      {
-        path: "zones",
-        Component: ZonesPage,
-      },
-      {
-        path: "zones/:zoneName",
-        Component: ZoneDetailsPage,
-      },
-    ],
-  },
-]);
+    basename: "/SmartWatt",
+  }
+);

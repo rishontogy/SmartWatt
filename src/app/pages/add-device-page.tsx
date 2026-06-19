@@ -14,7 +14,6 @@ import {
   Fan,
   Smartphone,
   Monitor,
-  WashingMachine,
   Home,
   ArrowLeft,
 } from "lucide-react";
@@ -41,8 +40,6 @@ const deviceTypes = [
   { value: "computer", label: "Computer", icon: Monitor },
   { value: "other", label: "Other", icon: Zap },
 ];
-
-const zones = ["Living Room", "Kitchen", "Bedroom", "Bathroom", "Dining Room", "Hallway"];
 
 export function AddDevicePage() {
   const navigate = useNavigate();
@@ -91,10 +88,10 @@ export function AddDevicePage() {
       const deviceData = {
         id: Date.now().toString(),
         zone: newDevice.zone,
-        status: 'offline',
         name: newDevice.name,
         type: newDevice.type,
         consumption: parseInt(newDevice.consumption),
+        icon: newDevice.type,
       };
 
       await devicesAPI.saveDevice(deviceData);

@@ -10,7 +10,6 @@ import { Separator } from "@/app/components/ui/separator";
 import {
   User,
   Mail,
-  Phone,
   Calendar,
   Shield,
   Bell,
@@ -23,19 +22,32 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/app/contexts/theme-context";
 import { useAuth } from "@/app/contexts/auth-context";
-import { profileAPI } from "@/app/lib/api";
+import { profileAPI, devicesAPI, zonesAPI } from "@/app/lib/api";
 import { toast } from "sonner";
 
 export function ProfilePage() {
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<any>(null);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [zones, setZones] = useState<any[]>([]);
+  const [zoneEspStatus, setZoneEspStatus] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: '',
     email: ''
   });
+
+  // ESP32 Modal State
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [deviceForm, setDeviceForm] = useState({
+    ssid: '',
+    password: '',
+    type: 'slave',
+    zone: ''
+  });
+  const [provisioningStatus, setProvisioningStatus] = useState<string>('');
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -46,9 +58,9 @@ export function ProfilePage() {
         if (!data && user) {
           data = await profileAPI.createOrUpdateProfile({
             id: user.id,
-            full_name: user.user_metadata?.full_name || '',
+            full_name: user.name || '',
             email: user.email,
-            is_verified: user.email_confirmed_at ? true : false
+            is_verified: true // Assume verified if logged in for this implementation
           });
         }
 
@@ -57,9 +69,27 @@ export function ProfilePage() {
           full_name: data?.full_name || '',
           email: data?.email || user?.email || ''
         });
+
+        // Fetch devices and zones
+        const [userDevices, userZones] = await Promise.all([
+          devicesAPI.getDevices(),
+          zonesAPI.getZones()
+        ]);
+        
+        setDevices(userDevices);
+        setZones(userZones);
+
+        // Initialize switch states based on device status in each zone
+        const initialStatus: Record<string, boolean> = {};
+        userZones.forEach((z: any) => {
+          const deviceInZone = userDevices.find((d: any) => d.zone === z.name);
+          initialStatus[z.name] = deviceInZone ? deviceInZone.status === 'active' : false;
+        });
+        setZoneEspStatus(initialStatus);
+
       } catch (error) {
-        console.error("Failed to fetch profile:", error);
-        toast.error("Failed to load profile");
+        console.error("Failed to fetch profile/devices/zones:", error);
+        toast.error("Failed to load profile data");
       } finally {
         setLoading(false);
       }
@@ -96,6 +126,92 @@ export function ProfilePage() {
     }
   };
 
+  const handleToggleZoneESP = async (zoneName: string, checked: boolean) => {
+    try {
+      const deviceInZone = devices.find(d => d.zone === zoneName);
+      if (!deviceInZone) {
+        toast.error(`No ESP32 device found for zone: ${zoneName}`);
+        return;
+      }
+
+      const newStatus = checked ? 'active' : 'inactive';
+      await devicesAPI.toggleDevice(deviceInZone.id, newStatus);
+      
+      setZoneEspStatus(prev => ({ ...prev, [zoneName]: checked }));
+      toast.success(`ESP32 in ${zoneName} turned ${newStatus}`);
+    } catch (error) {
+      console.error("Toggle failed:", error);
+      toast.error("Failed to toggle device");
+    }
+  };
+
+  const handleRemoveDevice = async (deviceId: string) => {
+    try {
+      await devicesAPI.deleteDevice(deviceId);
+      setDevices(devices.filter(d => d.id !== deviceId));
+      toast.success("Device removed successfully");
+    } catch (error) {
+      console.error("Failed to remove device:", error);
+      toast.error("Failed to remove device");
+    }
+  };
+
+  const handleProvisionESP32 = async () => {
+    if (!deviceForm.ssid || !deviceForm.password || (deviceForm.type === 'slave' && !deviceForm.zone)) {
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+
+    try {
+      setProvisioningStatus('Requesting Bluetooth Device...');
+      console.log('Requesting Bluetooth device...');
+
+      // This requires HTTPS or localhost
+      const device = await (navigator as any).bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b'] // Example typical UART service UUID
+      });
+
+      setProvisioningStatus('Connecting to GATT Server...');
+      const server = await device.gatt.connect();
+
+      setProvisioningStatus('Getting Service...');
+      const service = await server.getPrimaryService('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
+
+      setProvisioningStatus('Getting Characteristic...');
+      const characteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8'); // Example Rx characteristic
+
+      setProvisioningStatus('Sending configuration...');
+      const config = {
+        ssid: deviceForm.ssid,
+        pass: deviceForm.password,
+        userId: user.id,
+        type: deviceForm.type,
+        zone: deviceForm.zone
+      };
+
+      const encoder = new TextEncoder();
+      await characteristic.writeValue(encoder.encode(JSON.stringify(config)));
+
+      setProvisioningStatus('Configuration sent! Awaiting connected status...');
+      toast.success("Configuration sent to ESP32! Please allow it a moment to connect to WiFi and register.");
+
+      // Close modal and try to refresh devices after a delay
+      setTimeout(async () => {
+        const updatedDevices = await devicesAPI.getDevices();
+        setDevices(updatedDevices);
+        setShowDeviceModal(false);
+        setProvisioningStatus('');
+        setDeviceForm({ ssid: '', password: '', type: 'slave', zone: '' });
+      }, 5000);
+
+    } catch (error: any) {
+      console.error('Bluetooth Provisioning failed', error);
+      toast.error(`Provisioning failed: ${error.message}`);
+      setProvisioningStatus('');
+    }
+  };
+
   if (loading) {
     return <div className="max-w-6xl mx-auto space-y-6">Loading...</div>;
   }
@@ -129,8 +245,10 @@ export function ProfilePage() {
           </Avatar>
           <div className="space-y-2">
             <h3 className="text-2xl font-bold">{profile?.full_name || user.email}</h3>
-            <Badge>{profile?.is_verified ? 'Verified' : 'Unverified'}</Badge>
-            <p className="text-sm text-muted-foreground">User ID: {user.id}</p>
+            <Badge variant={profile?.status === 'verified' ? 'default' : 'secondary'}>
+              {profile?.status === 'verified' ? 'Verified' : 'Unverified'}
+            </Badge>
+            <p className="text-sm text-muted-foreground">User ID: {profile?.user_id || user?.id}</p>
           </div>
         </div>
 
@@ -172,7 +290,7 @@ export function ProfilePage() {
             <Label>User ID</Label>
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-muted-foreground" />
-              <span className="font-mono text-sm">{user.id}</span>
+              <span className="font-mono text-sm">{profile?.user_id || user.id}</span>
             </div>
           </div>
 
@@ -180,7 +298,7 @@ export function ProfilePage() {
             <Label>Account Created</Label>
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              <span>{user.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}</span>
+              <span>{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}</span>
             </div>
           </div>
 
@@ -188,7 +306,7 @@ export function ProfilePage() {
             <Label>Last Login</Label>
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              <span>{profile?.last_login ? new Date(profile.last_login).toLocaleString() : 'Never'}</span>
+              <span>{profile?.core_last_login || profile?.last_login ? new Date(profile?.core_last_login || profile?.last_login).toLocaleString() : 'Never'}</span>
             </div>
           </div>
 
@@ -196,8 +314,8 @@ export function ProfilePage() {
             <Label>Verification Status</Label>
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-muted-foreground" />
-              <Badge variant={profile?.is_verified ? 'default' : 'secondary'}>
-                {profile?.is_verified ? 'Verified' : 'Unverified'}
+              <Badge variant={profile?.status === 'verified' ? 'default' : 'secondary'}>
+                {profile?.status === 'verified' ? 'Verified' : 'Unverified'}
               </Badge>
             </div>
           </div>
@@ -209,37 +327,6 @@ export function ProfilePage() {
             <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
           </div>
         )}
-      </Card>
-
-      {/* Connected Devices */}
-      <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">Connected Devices</h2>
-        <div className="space-y-4">
-          {[
-            { id: "ESP32-001", zone: "Living Room", status: "online", lastSeen: "2 sec ago" },
-            { id: "ESP32-002", zone: "Kitchen", status: "online", lastSeen: "5 sec ago" },
-            { id: "ESP32-003", zone: "Bedroom", status: "online", lastSeen: "3 sec ago" },
-            { id: "ESP32-004", zone: "Main Board", status: "online", lastSeen: "1 sec ago" },
-          ].map((device) => (
-            <div key={device.id} className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${device.status === "online" ? "bg-green-100" : "bg-gray-100"}`}>
-                  <Wifi className={`w-5 h-5 ${device.status === "online" ? "text-green-600" : "text-gray-400"}`} />
-                </div>
-                <div>
-                  <h4 className="font-semibold">{device.id}</h4>
-                  <p className="text-sm text-gray-600">{device.zone}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <Badge variant={device.status === "online" ? "default" : "secondary"}>
-                  {device.status}
-                </Badge>
-                <p className="text-xs text-gray-500 mt-1">Last seen: {device.lastSeen}</p>
-              </div>
-            </div>
-          ))}
-        </div>
       </Card>
 
       {/* Energy Usage Summary */}
@@ -261,6 +348,118 @@ export function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      {/* Device Management */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Device Management</h2>
+          <Button onClick={() => setShowDeviceModal(true)} size="sm">
+            <Wifi className="w-4 h-4 mr-2" />
+            Add New ESP32
+          </Button>
+        </div>
+
+        {devices.length === 0 ? (
+          <p className="text-gray-500 italic">No ESP32 devices paired yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {devices.map((device) => (
+              <div key={device.id} className="flex items-center justify-between border-b pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{device.id}</span>
+                    <Badge variant={device.type === 'master' ? 'default' : 'secondary'}>
+                      {device.type.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Zone: {device.zone || 'Global (Master)'} • Status: {device.status}
+                  </p>
+                </div>
+                <Button variant="destructive" size="sm" onClick={() => handleRemoveDevice(device.id)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Provisioning Modal */}
+      {showDeviceModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="p-6 w-full max-w-md bg-white">
+            <h2 className="text-2xl font-bold mb-4">Add ESP32 Device</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Enter your WiFi details so we can provision the ESP32 via Bluetooth.
+            </p>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <Label htmlFor="ssid">WiFi SSID</Label>
+                <Input
+                  id="ssid"
+                  placeholder="Network Name"
+                  value={deviceForm.ssid}
+                  onChange={(e) => setDeviceForm({ ...deviceForm, ssid: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="password">WiFi Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Network Password"
+                  value={deviceForm.password}
+                  onChange={(e) => setDeviceForm({ ...deviceForm, password: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="type">Device Type</Label>
+                <select
+                  id="type"
+                  className="w-full mt-1 p-2 border rounded-md"
+                  value={deviceForm.type}
+                  onChange={(e) => setDeviceForm({ ...deviceForm, type: e.target.value })}
+                >
+                  <option value="slave">Slave (Zone Module)</option>
+                  <option value="master">Master (Main Line Module)</option>
+                </select>
+              </div>
+              {deviceForm.type === 'slave' && (
+                <div>
+                  <Label htmlFor="zone">Zone Name</Label>
+                  <Input
+                    id="zone"
+                    placeholder="e.g., Living Room"
+                    value={deviceForm.zone}
+                    onChange={(e) => setDeviceForm({ ...deviceForm, zone: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    A new zone will be automatically created if it doesn't exist.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {provisioningStatus && (
+              <p className="text-sm text-blue-600 mb-4 animate-pulse">
+                {provisioningStatus}
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowDeviceModal(false)} disabled={!!provisioningStatus}>
+                Cancel
+              </Button>
+              <Button onClick={handleProvisionESP32} disabled={!!provisioningStatus}>
+                <Wifi className="w-4 h-4 mr-2" />
+                Connect via Bluetooth
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Preferences / Settings */}
       <Card className="p-6">
@@ -331,6 +530,26 @@ export function ProfilePage() {
             </div>
             <Switch />
           </div>
+
+          {/* Dynamic Zone ESP Switches */}
+          {zones.map((zone) => (
+            <div key={zone.id}>
+              <Separator />
+              <div className="flex items-center justify-between py-4">
+                <div className="flex items-center gap-3">
+                  <Wifi className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <p className="font-medium">{zone.name} ESP32 Control</p>
+                    <p className="text-sm text-muted-foreground">Toggle power for this zone's module</p>
+                  </div>
+                </div>
+                <Switch 
+                  checked={zoneEspStatus[zone.name] || false}
+                  onCheckedChange={(checked) => handleToggleZoneESP(zone.name, checked)}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </Card>
 

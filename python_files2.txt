@@ -1,0 +1,5 @@
+﻿D:\SmartWatt\scratch_yolo_test.py
+D:\SmartWatt\backend\detector.py
+D:\SmartWatt\backend\proxy.py
+D:\SmartWatt\backend\solve.py
+D:\SmartWatt\node_modules\shell-quote\print.py

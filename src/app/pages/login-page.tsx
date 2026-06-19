@@ -9,6 +9,7 @@ import { Zap, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/app/contexts/auth-context";
 import { toast } from "sonner";
 
+
 export function LoginPage() {
   const navigate = useNavigate();
   const { signIn } = useAuth();
@@ -109,8 +110,8 @@ export function LoginPage() {
             </a>
           </div>
 
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={loading}
             className="w-full bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600"
           >
